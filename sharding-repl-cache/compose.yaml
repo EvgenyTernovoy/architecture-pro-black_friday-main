@@ -1,0 +1,210 @@
+name: sharding-repl-cache
+services:
+  redis:
+    image: redis:7.2
+    container_name: redis
+    networks: [ app-network ]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+
+  # --- CONFIG REPLICASET ---
+  config1:
+    image: mongo:latest
+    command: mongod --configsvr --replSet configReplSet --port 27017
+    networks: [ app-network ]
+    volumes:
+      - config1-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27017", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+  config2:
+    image: mongo:latest
+    command: mongod --configsvr --replSet configReplSet --port 27017
+    networks: [ app-network ]
+    volumes:
+      - config2-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27017", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+  config3:
+    image: mongo:latest
+    command: mongod --configsvr --replSet configReplSet --port 27017
+    networks: [ app-network ]
+    volumes:
+      - config3-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27017", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+  
+  # --- SHARD1 ---
+  shard1a:
+    image: mongo:latest
+    command: mongod --shardsvr --replSet shard1ReplSet --port 27018
+    networks: [ app-network ]
+    volumes:
+      - shard1a-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+  shard1b:
+    image: mongo:latest
+    command: mongod --shardsvr --replSet shard1ReplSet --port 27018
+    networks: [ app-network ]
+    volumes:
+      - shard1b-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+  shard1c:
+    image: mongo:latest
+    command: mongod --shardsvr --replSet shard1ReplSet --port 27018
+    networks: [ app-network ]
+    volumes:
+      - shard1c-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  # --- SHARD2 ---
+  shard2a:
+    image: mongo:latest
+    command: mongod --shardsvr --replSet shard2ReplSet --port 27018
+    networks: [ app-network ]
+    volumes:
+      - shard2a-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+  shard2b:
+    image: mongo:latest
+    command: mongod --shardsvr --replSet shard2ReplSet --port 27018
+    networks: [ app-network ]
+    volumes:
+      - shard2b-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+  shard2c:
+    image: mongo:latest
+    command: mongod --shardsvr --replSet shard2ReplSet --port 27018
+    networks: [ app-network ]
+    volumes:
+      - shard2c-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  # --- SHARD3 ---
+  shard3a:
+    image: mongo:latest
+    command: mongod --shardsvr --replSet shard3ReplSet --port 27018
+    networks: [ app-network ]
+    volumes:
+      - shard3a-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+  shard3b:
+    image: mongo:latest
+    command: mongod --shardsvr --replSet shard3ReplSet --port 27018
+    networks: [ app-network ]
+    volumes:
+      - shard3b-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+  shard3c:
+    image: mongo:latest
+    command: mongod --shardsvr --replSet shard3ReplSet --port 27018
+    networks: [ app-network ]
+    volumes:
+      - shard3c-data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  mongos_router:
+    image: mongo:latest
+    container_name: mongos_router
+    restart: always
+    ports:
+      - "27020:27020"
+    networks:
+      app-network:
+    depends_on:
+      - config1
+      - config2
+      - config3
+      - shard1a
+      - shard2a
+      - shard3a
+    command:
+      [
+        "mongos",
+        "--configdb", 
+        "configReplSet/config1:27017,config2:27017,config3:27017",
+        "--bind_ip_all",
+        "--port",
+        "27020"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27021", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  pymongo_api:
+    container_name: pymongo_api
+    build: 
+      context: api_app
+      dockerfile: Dockerfile
+    depends_on:
+      - mongos_router
+      - redis
+    ports:
+      - 8080:8080
+    environment:
+      MONGODB_URL: "mongodb://mongos_router:27020"
+      MONGODB_DATABASE_NAME: "somedb"
+      REDIS_URL: "redis://redis:6379/0"
+    networks:
+      app-network:
+
+volumes:
+  config1-data:
+  config2-data:
+  config3-data:
+  shard1a-data:
+  shard1b-data:
+  shard1c-data:
+  shard2a-data:
+  shard2b-data:
+  shard2c-data:
+  shard3a-data:
+  shard3b-data:
+  shard3c-data:
+  redis_data:
+
+networks:
+  app-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 173.17.0.0/16
+
+    
